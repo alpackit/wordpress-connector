@@ -1,0 +1,17 @@
+{
+  "name": "alpackit/wordpress-connector",
+  "description": "Base connector to connect WordPress plugins to Alpackit",
+  "keywords": ["wordpress", "plugin", "connector"],
+  "homepage": "https://www.alpackit.com",
+  "authors": [
+    {
+      "name": "Luc Princen",
+      "email": "luc@alpackit.com",
+      "homepage": "https://www.alpackit.com"
+    }
+  ],
+  "type": "wordpress-plugin",
+  "require": {
+    "php": ">=5.3.2"
+  }
+}
