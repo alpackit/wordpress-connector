@@ -41,7 +41,7 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
      *
      * @var string
      */
-    protected $location = '/packit/connection.php';
+    const LOCATION = '/packit/connection.php';
 
 
     /**
@@ -60,9 +60,9 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
 
 
     /**
-     * Alpackit license token
+     * Alpackit license
      *
-     * @var string
+     * @var array
      */
     protected $license;
 
@@ -73,14 +73,17 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
     public function __construct()
     {
         //get the plugin slug:
-        $this->slug = str_replace( $this->location, '', plugin_basename( __FILE__ ) );
+        $this->slug = str_replace( self::LOCATION, '', plugin_basename( __FILE__ ) );
         $this->pluginSlug = $this->makePluginSlug();
 
-        $this->license = get_option( self::UUID.'.license', '' );
+        $this->license = static::getLicense();
 
         if( self::METHOD == 'dev' ){
 
+            //no plugin transients:
             set_site_transient( 'update_plugins', null );
+
+            //output all result information:
             add_filter( 'plugins_api_result', array( &$this, 'resultInfo' ), 100, 3 );
 
         }
@@ -98,23 +101,40 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
      */
     public function setEvents()
     {
-        //Add the filter for plugin-update checks
-        // ( this only runs when the transient isn't set )
-        // add_filter( 'pre_set_site_transient_update_plugins', array( &$this, 'check' ), 100, 1 );
-        add_filter( 'site_transient_update_plugins', array( &$this, 'check' ), 100, 1 );
-        add_filter( 'transient_update_plugins', array( &$this, 'check' ), 100, 1 );
 
-        // Take over the Plugin info screen
-        add_filter('plugins_api', array( &$this, 'info' ), 10, 3);
+        //only add these events when a valid license is present:
+        if( $this->hasValidLicense ){
 
+            //Add the filter for plugin-update checks
+            add_filter( 'site_transient_update_plugins', array( &$this, 'checkForUpdate' ), 100, 1 );
+            add_filter( 'transient_update_plugins', array( &$this, 'checkForUpdate' ), 100, 1 );
+
+            // Take over the Plugin info screen
+            add_filter('plugins_api', array( &$this, 'updateInfo' ), 10, 3);
+
+            // Add custom buttons to the plugin overview-screen
+
+        }else{
+
+            // Create the 'Add license' notifcation
+
+            // Create the 'Add license' button
+
+        }
     }
+
+
+
+    /**********************************************/
+    /***        Updates:
+    /**********************************************/
 
     /**
      * Run plugin checks, on the update_plugin filter
      *
      * @return array
      */
-    public function check( $data )
+    public function checkForUpdate( $data )
     {
         global $wp_version;
 
@@ -162,7 +182,7 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
     {
         $url = trailingslashit( self::BASE_URL.self::API_VERSION );
         $url .= 'wordpress/license/';
-        $url .= $this->license;
+        $url .= $this->license['key'];
         $url .= '/packit/info';
 
         return $url;
@@ -196,10 +216,57 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
         return $result;
     }
 
+    /**********************************************/
+    /***        License checks:
+    /**********************************************/
+
+    /**
+     * Checks if this domain is licensed
+     *
+     * @param  bool $checkRemote - force a new http request to check
+     */
+    public static function hasValidLicense( $checkRemote = false ){
+
+        //get the local license:
+        $_license = static::getLicense();
+
+        //check if it's available:
+        if( static::licenseSet( $_license ) )
+            return false;
+
+        //check if it's expired:
+        if(
+            !isset( $_license[ 'expires' ] ) ||
+            $_license[ 'expires' ] > time()
+        )
+            return false;
+
+
+        return true;
+    }
+
+    /**
+     * Checks if the license isn't an empty array and the key is set
+     *
+     * @return bool
+     */
+    public static function licenseSet( $_license = array() )
+    {
+        if( empty( $_license ) || !isset( $_license['key'] ) )
+            return false;
+
+        return true;
+    }
+
 
     /**********************************************/
     /***        Helpers:
     /**********************************************/
+
+    public static function getLicense()
+    {
+        return get_option( static::UUID.'.license', array() );
+    }
 
 
     /**
@@ -222,5 +289,55 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
 
 }
 
-//fire once:
+/**
+ * Helper functions:
+ */
+
+if( !function_exists( 'packit_has_license' ) ){
+
+    /**
+     * Soft-checks a license
+     *
+     * @param  string $uuid  - Packit uuid
+     * @return bool
+     */
+    function packit_has_license( $uuid = null ){
+
+        $class = packit_get_class_name( $uuid );
+        return $class::hasValidLicense();
+    }
+
+    /**
+     * Does a remote-check to see if a packit has a valid license
+     * @param  string $uuid - Packit uuid
+     * @return bool
+     */
+    function packit_check_license( $uuid = null ){
+
+        $class = packit_get_class_name( $uuid );
+        return $class::hasValidLicense( true ); //hard-check
+    }
+
+
+    /**
+     * Return the generated class name
+     * @param  string $uuid
+     * @return string
+     */
+    function packit_get_class_name( $uuid = null ){
+
+        if( $uuid == null )
+            throw new Exception( 'No uuid given' );
+
+        $prefix = strtolower( str_replace( array( ' ', '-', '_' ), '', $uuid ) );
+        return 'Packit_{$prefix}_UpdateController';
+    }
+
+}
+
+
+//fire the class once:
 new Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController();
+
+
+
