@@ -3,7 +3,7 @@
 // Exit if accessed directly
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// Alpackits update-checker for 57bf2bc37a5f0:
+// Alpackits update-checker for packit {{PACKIT_CLASS_PREFIX}}
 class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
 
     /**
@@ -141,43 +141,49 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
         if ( !isset( $data ) || empty( $data->checked ) )
             return $data;
 
-        //make a remote call:
-        $response = wp_remote_get( $this->getUrl() );
+        try{
 
-        //no error-headers found:
-        if( !is_wp_error( $response ) && ( $response['response']['code'] == 200 ) ){
+            //make a remote call:
+            $response = wp_remote_get( $this->getUrl() );
+
+            //check if this response has errors:
+            if( is_wp_error( $response ) || ( $response['response']['code'] == 200 ) )
+                throw new Exception( $response->get_error_message() );
 
             //body is a json:
             $response = json_decode( $response['body'] );
 
-            //json isn't empty:
-            if( is_object( $response ) && !empty( $response ) ){ // Feed the update data into WP updater
+            //check if json wasn't empty:
+            if( !is_object( $response ) || empty( $response ) )
+                throw new Exception( 'Response couldn\'t be parsed' );
 
-                //build the update object
-                $update = new stdClass();
-                $update->slug = $this->slug;
-                $update->plugin = $this->pluginSlug;
-                $update->new_version = $response->version;
-                $update->url = self::BASE_URL.self::UUID;
-                $update->package = $response->download;
+            // Feed the update data into WP updater
+            //build the update object
+            $update = new stdClass();
+            $update->slug = $this->slug;
+            $update->plugin = $this->pluginSlug;
+            $update->new_version = $response->version;
+            $update->url = self::BASE_URL.self::UUID;
+            $update->package = $response->download;
 
-                //pass the update object
-                $data->response[  $this->pluginSlug ] = $update;
-            }
+            //pass the update object
+            $data->response[  $this->pluginSlug ] = $update;
 
-        }else{
 
-            //throw an error
-            echo '<pre>';
-                print_r( $response );
-            echo '</pre>';
+        } catch( Exception $e ) {
 
+            echo $e->getMessage();
 
         }
 
         return $data;
     }
 
+    /**
+     * Get the alpackit url where we can check the license
+     *
+     * @return string
+     */
     public function getUrl()
     {
         $url = trailingslashit( self::BASE_URL.self::API_VERSION );
@@ -263,6 +269,12 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
     /***        Helpers:
     /**********************************************/
 
+    /**
+     * Get the license object, if it's saved
+     * Defaults to an empty array
+     *
+     * @return array
+     */
     public static function getLicense()
     {
         return get_option( static::UUID.'.license', array() );
@@ -306,6 +318,7 @@ if( !function_exists( 'packit_has_license' ) ){
         $class = packit_get_class_name( $uuid );
         return $class::hasValidLicense();
     }
+}
 
     /**
      * Does a remote-check to see if a packit has a valid license
