@@ -305,14 +305,15 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
  * Helper functions:
  */
 
+
+/**
+ * Soft-checks a license
+ *
+ * @param  string $uuid  - Packit uuid
+ * @return bool
+ */
 if( !function_exists( 'packit_has_license' ) ){
 
-    /**
-     * Soft-checks a license
-     *
-     * @param  string $uuid  - Packit uuid
-     * @return bool
-     */
     function packit_has_license( $uuid = null ){
 
         $class = packit_get_class_name( $uuid );
@@ -320,23 +321,29 @@ if( !function_exists( 'packit_has_license' ) ){
     }
 }
 
-    /**
-     * Does a remote-check to see if a packit has a valid license
-     * @param  string $uuid - Packit uuid
-     * @return bool
-     */
+
+/**
+ * Does a remote-check to see if a packit has a valid license
+ * @param  string $uuid - Packit uuid
+ * @return bool
+ */
+if( !function_exists( 'packit_check_license' ) ){
+
     function packit_check_license( $uuid = null ){
 
         $class = packit_get_class_name( $uuid );
         return $class::hasValidLicense( true ); //hard-check
     }
+}
 
 
-    /**
-     * Return the generated class name
-     * @param  string $uuid
-     * @return string
-     */
+/**
+ * Return the generated class name
+ * @param  string $uuid
+ * @return string
+ */
+if( !function_exists( 'packit_get_class_name' ) ){
+
     function packit_get_class_name( $uuid = null ){
 
         if( $uuid == null )
@@ -345,7 +352,6 @@ if( !function_exists( 'packit_has_license' ) ){
         $prefix = strtolower( str_replace( array( ' ', '-', '_' ), '', $uuid ) );
         return 'Packit_{$prefix}_UpdateController';
     }
-
 }
 
 
