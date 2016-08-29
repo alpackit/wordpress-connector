@@ -76,6 +76,13 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
         $this->slug = str_replace( self::LOCATION, '', plugin_basename( __FILE__ ) );
         $this->pluginSlug = $this->makePluginSlug();
 
+        //check if a license is send back:
+        if( isset( $_GET['license'] ) ){
+            $license = array( 'key' => $_GET['license'], 'expires' => strtotime( '+1 year' ) );
+            update_option( static::UUID.'.license', $license );
+            Header('Location: '. remove_query_arg( 'license' ) );
+        }
+
         $this->license = static::getLicense();
 
         if( self::METHOD == 'dev' ){
@@ -88,8 +95,11 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
 
         }
 
+
+
         if( $this->pluginSlug !== null )
             $this->setEvents();
+
 
 
     }
@@ -101,9 +111,8 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
      */
     public function setEvents()
     {
-
         //only add these events when a valid license is present:
-        if( $this->hasValidLicense ){
+        if( static::hasValidLicense() ){
 
             //Add the filter for plugin-update checks
             add_filter( 'site_transient_update_plugins', array( &$this, 'checkForUpdate' ), 100, 1 );
@@ -117,8 +126,11 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
         }else{
 
             // Create the 'Add license' notifcation
+            add_action( 'admin_notices', array( &$this, 'licenseNag' ) );
 
             // Create the 'Add license' button
+            add_action( 'plugin_action_links', array( &$this, 'licenseButton' ), 100, 2 );
+            add_action( 'network_admin_plugin_action_links', array( &$this, 'licenseButton' ), 100, 2 );
 
         }
     }
@@ -147,7 +159,7 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
             $response = wp_remote_get( $this->getUrl() );
 
             //check if this response has errors:
-            if( is_wp_error( $response ) || ( $response['response']['code'] == 200 ) )
+            if( is_wp_error( $response ) || ( $response['response']['code'] != 200 ) )
                 throw new Exception( $response->get_error_message() );
 
             //body is a json:
@@ -179,21 +191,7 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
         return $data;
     }
 
-    /**
-     * Get the alpackit url where we can check the license
-     *
-     * @return string
-     */
-    public function getUrl()
-    {
-        $url = trailingslashit( self::BASE_URL.self::API_VERSION );
-        $url .= 'wordpress/license/';
-        $url .= $this->license['key'];
-        $url .= '/packit/info';
 
-        return $url;
-
-    }
 
 
     /**
@@ -223,6 +221,46 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
     }
 
     /**********************************************/
+    /***        License logic:
+    /**********************************************/
+
+    /**
+     * Shows the license-button:
+     *
+     * @return string
+     */
+    public function licenseButton( $actions, $pluginFile )
+    {
+        if( $pluginFile == $this->pluginSlug ){
+
+            $html = '<a href="'.$this->getLicenseUrl().'" target="_blank">';
+                $html .= apply_filters( 'alpackit_button_text', 'Add license' );
+            $html .= '</a>';
+
+            $actions[ 'license' ] = $html;
+        }
+    }
+
+    /**
+     * Add an admin license nag
+     *
+     * @return string
+     */
+    public function licenseNag()
+    {
+
+        $msg = apply_filters( 'alpackit_license_nag_message', 'It seems you do not have a license for '.$this->slug.' yet...' );
+        echo '<div class="notice notice-error">';
+            echo '<p>'.$msg.'</p>';
+            echo '<a href="'.$this->getLicenseUrl().'" target="_blank" style="float:right;margin-top:-30px;">';
+                echo apply_filters( 'alpackit_license_nag', 'Why not add one?' );
+            echo '</a>';
+        echo '</div>';
+
+    }
+
+
+    /**********************************************/
     /***        License checks:
     /**********************************************/
 
@@ -237,13 +275,13 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
         $_license = static::getLicense();
 
         //check if it's available:
-        if( static::licenseSet( $_license ) )
+        if( !static::licenseSet( $_license ) )
             return false;
 
         //check if it's expired:
         if(
             !isset( $_license[ 'expires' ] ) ||
-            $_license[ 'expires' ] > time()
+            $_license[ 'expires' ] < time()
         )
             return false;
 
@@ -268,6 +306,104 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
     /**********************************************/
     /***        Helpers:
     /**********************************************/
+
+
+
+    /**
+     * Get the alpackit url where we can check the license
+     *
+     * @return string
+     */
+    public function getUrl()
+    {
+        $url = trailingslashit( self::BASE_URL );
+        $url .= 'remote/'.trailingslashit( self::API_VERSION );
+
+        $url .= 'wordpress/license/';
+        $url .= $this->license['key'];
+        $url .= '/packit/info';
+
+        return $url;
+
+    }
+
+
+
+    /**
+     * Get the alpackit url where we can check the license
+     *
+     * @return string
+     */
+    public function getLicenseUrl()
+    {
+        $url = trailingslashit( self::BASE_URL );
+        $url .= 'clientconnect/';
+        $url .= trailingslashit( self::UUID );
+        $url .= trailingslashit( $this->getDomain() );
+        $url .= '?callback_url='.$this->getCurrentUrl();
+
+        return $url;
+
+    }
+
+    /**
+     * Returns the domain of this website
+     *
+     * @return string
+     */
+    public function getDomain()
+    {
+        return $_SERVER['SERVER_NAME'];
+    }
+
+    /**
+     * Get the current url
+     *
+     * @return string
+     */
+    public function getCurrentUrl()
+    {
+        $url = '';
+
+        // Check to see if it's over https
+        if ( isset($_SERVER['HTTPS']) && !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off' ) {
+            $url .= 'https://';
+        } else {
+            $url .= 'http://';
+        }
+
+        // Was a username or password passed?
+        if (isset($_SERVER['PHP_AUTH_USER'])) {
+            $url .= $_SERVER['PHP_AUTH_USER'];
+
+            if (isset($_SERVER['PHP_AUTH_PW'])) {
+                $url .= ':' . $_SERVER['PHP_AUTH_PW'];
+            }
+
+            $url .= '@';
+        }
+
+
+        // We want the user to stay on the same host they are currently on,
+        // but beware of security issues
+        // see http://shiflett.org/blog/2006/mar/server-name-versus-http-host
+        $url .= $_SERVER['HTTP_HOST'];
+
+        // Get the rest of the URL
+        if (!isset($_SERVER['REQUEST_URI'])) {
+            // Microsoft IIS doesn't set REQUEST_URI by default
+            $url .= $_SERVER['PHP_SELF'];
+
+            if (isset($_SERVER['QUERY_STRING'])) {
+                $url .= '?' . $_SERVER['QUERY_STRING'];
+            }
+        } else {
+            $url .= $_SERVER['REQUEST_URI'];
+        }
+
+        return $url;
+    }
+
 
     /**
      * Get the license object, if it's saved
