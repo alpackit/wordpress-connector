@@ -158,9 +158,14 @@ class Packit_{{PACKIT_CLASS_PREFIX}}_UpdateController{
             //make a remote call:
             $response = wp_remote_get( $this->getUrl() );
 
-            //check if this response has errors:
-            if( is_wp_error( $response ) || ( $response['response']['code'] != 200 ) )
+             //check if the response was valid:
+            if( is_wp_error( $response ) )
                 throw new Exception( $response->get_error_message() );
+
+            //check if Alpackit returned a 200 response:
+            if( $response['response']['code'] != 200 )
+                throw new Exception( $response['response']['message'] );
+
 
             //body is a json:
             $response = json_decode( $response['body'] );
